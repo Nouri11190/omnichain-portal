@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { BrowserProvider, Contract, formatUnits } from 'ethers'
+import { EthereumProvider } from '@walletconnect/ethereum-provider'
 import './App.css'
+
+// Get a free Project ID at https://cloud.reown.com
+const WALLETCONNECT_PROJECT_ID = 'YOUR_PROJECT_ID'
 
 const NETWORKS = {
   sepolia: { name: 'Ethereum Sepolia', chainId: 11155111 },
@@ -9,6 +13,7 @@ const NETWORKS = {
 
 function App() {
   const [account, setAccount] = useState<string | null>(null)
+  const [wcProvider, setWcProvider] = useState<any>(null)
   const [contractAddress, setContractAddress] = useState('')
   const [abiText, setAbiText] = useState('')
   const [functionName, setFunctionName] = useState('')
@@ -17,24 +22,56 @@ function App() {
   const [network, setNetwork] = useState<keyof typeof NETWORKS>('sepolia')
 
   async function connectWallet() {
-    if (!(window as any).ethereum) {
-      setResult('No wallet found. Install MetaMask or similar.')
-      return
+    try {
+      const provider = await EthereumProvider.init({
+        projectId: WALLETCONNECT_PROJECT_ID,
+        chains: [NETWORKS[network].chainId],
+        showQrModal: true,
+        metadata: {
+          name: 'Solidity Contract Dev Portal',
+          description: 'Read/write any contract via WalletConnect',
+          url: 'https://nouri11190.github.io/omnichain-portal/',
+          icons: [],
+        },
+      })
+
+      await provider.connect()
+      setWcProvider(provider)
+      setAccount(provider.accounts[0])
+    } catch (err: any) {
+      setResult(`Connect error: ${err.message || String(err)}`)
     }
-    const provider = new BrowserProvider((window as any).ethereum)
-    const accounts = await provider.send('eth_requestAccounts', [])
-    setAccount(accounts[0])
+  }
+
+  function disconnectWallet() {
+    wcProvider?.disconnect()
+    setWcProvider(null)
+    setAccount(null)
   }
 
   async function callFunction(isWrite: boolean) {
     try {
-      if (!(window as any).ethereum) throw new Error('No wallet found')
       if (!contractAddress || !abiText) throw new Error('Address and ABI required')
 
-      const provider = new BrowserProvider((window as any).ethereum)
-      const signer = isWrite ? await provider.getSigner() : provider
+      let signerOrProvider: any
+      if (isWrite) {
+        if (!wcProvider) throw new Error('Connect wallet first for write calls')
+        const ethersProvider = new BrowserProvider(wcProvider)
+        signerOrProvider = await ethersProvider.getSigner()
+      } else {
+        // Reads don't require a connected wallet — use a public RPC via injected
+        // provider if present, otherwise the WalletConnect session if connected.
+        if (wcProvider) {
+          signerOrProvider = new BrowserProvider(wcProvider)
+        } else if ((window as any).ethereum) {
+          signerOrProvider = new BrowserProvider((window as any).ethereum)
+        } else {
+          throw new Error('Connect a wallet to read (no RPC configured otherwise)')
+        }
+      }
+
       const abi = JSON.parse(abiText)
-      const contract = new Contract(contractAddress, abi, signer)
+      const contract = new Contract(contractAddress, abi, signerOrProvider)
 
       const parsedArgs = args
         .split(',')
@@ -73,7 +110,10 @@ function App() {
 
       <section>
         {account ? (
-          <p>Connected: {account}</p>
+          <>
+            <p>Connected: {account}</p>
+            <button onClick={disconnectWallet}>Disconnect</button>
+          </>
         ) : (
           <button onClick={connectWallet}>Connect Wallet</button>
         )}
