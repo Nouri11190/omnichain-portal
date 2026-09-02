@@ -4,7 +4,7 @@ import { EthereumProvider } from '@walletconnect/ethereum-provider'
 import './App.css'
 
 // Get a free Project ID at https://cloud.reown.com
-const WALLETCONNECT_PROJECT_ID = 'YOUR_PROJECT_ID'
+const WALLETCONNECT_PROJECT_ID = 'dd67b4877554335ba3db6e3c8e17cb88'
 
 const NETWORKS = {
   sepolia: { name: 'Ethereum Sepolia', chainId: 11155111 },
